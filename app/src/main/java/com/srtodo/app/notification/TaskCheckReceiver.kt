@@ -5,6 +5,11 @@ import android.content.Context
 import android.content.Intent
 import android.util.Log
 import android.widget.RemoteViews
+import com.srtodo.app.appContainer
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 
 /** 通知内のチェックボックスが押されたときに呼ばれる */
 class TaskCheckReceiver : BroadcastReceiver() {
@@ -14,13 +19,23 @@ class TaskCheckReceiver : BroadcastReceiver() {
         Log.d(TAG, "onReceive: taskId=$taskId checked=$checked")
         if (taskId < 0 || !checked) return
 
-        // Phase 3 で goAsync() + Repository 経由の DB 更新に置き換える
-        PrototypeTasks.complete(taskId)
-        TaskNotifier.show(context)
+        // DB はメインスレッドで触れないため、goAsync() で Receiver を延命してバックグラウンドで完了させる
+        val pendingResult = goAsync()
+        val repository = context.appContainer.taskRepository
+        scope.launch {
+            try {
+                repository.complete(taskId)
+            } catch (e: Exception) {
+                Log.e(TAG, "タスクの完了に失敗しました: taskId=$taskId", e)
+            } finally {
+                pendingResult.finish()
+            }
+        }
     }
 
     companion object {
         const val EXTRA_TASK_ID = "com.srtodo.app.extra.TASK_ID"
         private const val TAG = "TaskCheckReceiver"
+        private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     }
 }

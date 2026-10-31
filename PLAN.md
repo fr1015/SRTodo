@@ -1,7 +1,7 @@
 # 開発計画・引き継ぎメモ
 
 最終更新: 2026-10-31
-進捗: Phase 1 完了（通知の試作。エミュレータ（API 36）でチェック→繰り上がり→0件で消えるまで確認済み）
+進捗: Phase 2 完了（Room のデータ層と NotificationUpdater。エミュレータ（API 36）で並び順・完了・プロセス再起動後の永続化を確認済み）
 デザイン: 作成中のため未定。決まるまでは Material3 標準の仮デザインで進める
 
 ## 決定済みの仕様
@@ -21,8 +21,8 @@
 ## 段取り
 - [x] **Phase 0：プロジェクトの準備**：`git init`、Compose の雛形を作る（minSdk 31）。Room / KSP / Coroutines を追加し、`./gradlew assembleDebug` が通ることを確認
 - [x] **Phase 1：通知の試作（最優先）**：RemoteViews の CheckBox と `setOnCheckedChangeResponse`（API 31以降）で、タップが BroadcastReceiver に届くか確かめる。カスタムレイアウトが通知の高さ制限に収まるかも確認。タスクは固定データでよい
-- [ ] **Phase 2：データ層**：`Task`（id, title, dueAt: Long?, isDone, createdAt, completedAt）。DAO は未完了のタスクを期限の近い順に上位3件取る（`ORDER BY dueAt IS NULL, dueAt ASC`）。Repository と NotificationUpdater を作る
-- [ ] **Phase 3：通知を消えにくくする**：チェックで完了したら Receiver 内で `goAsync()` を使ってDBを更新し、通知を出し直す（次のタスクが繰り上がる）。`setDeleteIntent` でスワイプされたら再投稿する（Android 14以降は ongoing 通知も消せるため必須）。`BOOT_COMPLETED` と `MY_PACKAGE_REPLACED` で再表示。`POST_NOTIFICATIONS` の権限リクエスト（Android 13以降）と通知チャンネルを用意する
+- [x] **Phase 2：データ層**：`Task`（id, title, dueAt: Long?, isDone, createdAt, completedAt）。DAO は未完了のタスクを期限の近い順に上位3件取る（`ORDER BY dueAt IS NULL, dueAt ASC`）。Repository と NotificationUpdater を作る
+- [ ] **Phase 3：通知を消えにくくする**：~~チェックで完了したら Receiver 内で `goAsync()` を使ってDBを更新し、通知を出し直す~~（Phase 2 で前倒し済み）。`setDeleteIntent` でスワイプされたら再投稿する（Android 14以降は ongoing 通知も消せるため必須）。`BOOT_COMPLETED` と `MY_PACKAGE_REPLACED` で再表示。`POST_NOTIFICATIONS` の権限リクエスト（Android 13以降）と通知チャンネルを用意する
 - [ ] **Phase 4：アプリ画面（仮デザイン）**：一覧、追加・編集（日時ピッカー）、削除、完了済みの表示。色や文字サイズは Theme にまとめておく
 - [ ] **Phase 5：デザインを反映**：Compose は Theme と各コンポーネントを差し替え、通知は XML レイアウトを差し替える
 - [ ] **Phase 6：仕上げ**：DAOの並び順と繰り上がりのテスト。実機で再起動、スワイプで消す、ダークモード、0件→1件の再表示、期限切れの赤字表示を確認
@@ -33,8 +33,19 @@
 - 通知の外枠（アプリ名・アイコンの行）はシステムが描く。デザインできるのは中身の部分だけ
 - ライトとダーク、両方のテーマに対応すること
 
+## データ層の実装メモ（Phase 2）
+- 構成（`com.srtodo.app`）
+  - `data/Task`（エンティティ、テーブル名 `tasks`、`(isDone, dueAt)` にインデックス）、`data/TaskDao`、`data/AppDatabase`（DB名 `srtodo.db`、version 1、スキーマは `app/schemas` に出力してコミットする）
+  - `data/TaskRepository`：書き込みの窓口。`add` / `edit` / `complete` / `uncomplete` / `delete` のたびに `NotificationUpdater.update()` を呼ぶ
+  - `notification/NotificationUpdater`：DB を読んで通知を作り直す（読むだけ）。`Mutex` で更新を1つずつ順番に行う
+  - `AppContainer`（手書き DI）を `SRTodoApplication` が持つ。`context.appContainer` で取り出す。通知チャンネルは `Application.onCreate` で作る
+- 並び順：`ORDER BY dueAt IS NULL, dueAt ASC, createdAt ASC, id ASC`（同じ期限・期限なし同士は作成が早い順）。完了済みは `completedAt DESC`
+- Receiver は `goAsync()` ＋ `Dispatchers.IO` のコルーチンで `repository.complete()` を呼ぶ（Room はメインスレッド不可のため Phase 3 から前倒し）
+- 動作確認用：`SampleTasks` と `TaskRepository.replaceWithSamples()`、MainActivity の仮画面（件数表示・「サンプルデータを入れ直す」ボタン）。**Phase 4 でアプリ画面ができたら外す**
+- 確認済み：空のDBでは通知が出ない／サンプル投入で通知が出る／バラバラの順で入れても SQL で正しく並ぶ／チェックで完了し繰り上がる／force-stop 後も状態が残る
+
 ## 通知の実装メモ（Phase 1 で確認済み）
-- 構成：`notification/TaskNotifier`（通知の組み立て・投稿）、`TaskCheckReceiver`（チェック受信）、`PrototypeTasks`（試作用の固定データ。Phase 2 で Repository に置き換える）
+- 構成：`notification/NotificationUpdater`（Phase 1 の `TaskNotifier` から改名。通知の組み立て・投稿）、`TaskCheckReceiver`（チェック受信）
 - レイアウト：`notification_task_list.xml`（枠）に `notification_task_row.xml`（1行48dp）を `addView` する。折りたたみ時1件・展開時3件で、`DecoratedCustomViewStyle` を使う
 - チェック：`setOnCheckedChangeResponse` ＋ `RemoteResponse.fromPendingIntent` で Receiver に届く。チェック状態は `RemoteViews.EXTRA_CHECKED` で受け取る。fill-in されるため **PendingIntent は `FLAG_MUTABLE` 必須**（明示的 Intent なので Android 14 の制限に当たらない）。requestCode はタスクIDにして行ごとに分ける
 - 折りたたみ時のチェックボックスも動作する
@@ -56,4 +67,4 @@
 - ビルド時の「Unable to strip libandroidx.graphics.path.so」は NDK が未導入なだけで、無視してよい
 
 ## 次にやること
-Phase 2（データ層）に着手する。`PrototypeTasks` を Room の `Task` ＋ Repository に置き換え、`TaskNotifier` を `NotificationUpdater` として DB から読むようにする
+Phase 3（通知を消えにくくする）に着手する。`setDeleteIntent` でスワイプ後に再投稿、`BOOT_COMPLETED` / `MY_PACKAGE_REPLACED` で再表示する（どちらも0件なら出さない）

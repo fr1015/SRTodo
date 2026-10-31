@@ -8,7 +8,9 @@
     <string name="due_overdue">期限切れ %1$s</string>
     <string name="task_check_description">完了にする</string>
 
-    <string name="prototype_show_notification">試作通知を表示</string>
-    <string name="prototype_reset">固定データを元に戻す</string>
-    <string name="prototype_permission_denied">通知が許可されていません。設定から許可してください</string>
+    <!-- 動作確認用の仮画面（Phase 4 で置き換える） -->
+    <string name="debug_counts">未完了 %1$d 件 ／ 完了済み %2$d 件</string>
+    <string name="debug_show_notification">通知を表示</string>
+    <string name="debug_reset_samples">サンプルデータを入れ直す</string>
+    <string name="debug_permission_denied">通知が許可されていません。設定から許可してください</string>
 </resources>

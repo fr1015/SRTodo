@@ -13,53 +13,62 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Button
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
-import com.srtodo.app.notification.PrototypeTasks
-import com.srtodo.app.notification.TaskNotifier
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.lifecycleScope
 import com.srtodo.app.ui.theme.SRTodoTheme
+import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
+
+    private val container by lazy { appContainer }
 
     private val requestNotificationPermission =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
             if (granted) {
-                TaskNotifier.show(this)
+                refreshNotification()
             } else {
-                Toast.makeText(this, R.string.prototype_permission_denied, Toast.LENGTH_LONG).show()
+                Toast.makeText(this, R.string.debug_permission_denied, Toast.LENGTH_LONG).show()
             }
         }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        TaskNotifier.createChannel(this)
-        showNotificationOrRequestPermission()
+        refreshNotificationOrRequestPermission()
 
         setContent {
             SRTodoTheme {
+                val pending by container.taskRepository.observePending()
+                    .collectAsStateWithLifecycle(initialValue = emptyList())
+                val completed by container.taskRepository.observeCompleted()
+                    .collectAsStateWithLifecycle(initialValue = emptyList())
+
                 Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
-                    // Phase 1 の試作用画面。Phase 4 でタスク一覧に置き換える
+                    // 動作確認用の仮画面。Phase 4 でタスク一覧に置き換える
                     Column(
-                        modifier = Modifier.fillMaxSize().padding(innerPadding),
-                        verticalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterVertically),
+                        modifier = Modifier.fillMaxSize().padding(innerPadding).padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterVertically),
                         horizontalAlignment = Alignment.CenterHorizontally,
                     ) {
-                        Text("SRTodo")
-                        Button(onClick = { showNotificationOrRequestPermission() }) {
-                            Text(stringResource(R.string.prototype_show_notification))
+                        Text("SRTodo", style = MaterialTheme.typography.titleLarge)
+                        Text(stringResource(R.string.debug_counts, pending.size, completed.size))
+                        Button(onClick = { refreshNotificationOrRequestPermission() }) {
+                            Text(stringResource(R.string.debug_show_notification))
                         }
                         OutlinedButton(onClick = {
-                            PrototypeTasks.reset()
-                            showNotificationOrRequestPermission()
+                            lifecycleScope.launch { container.taskRepository.replaceWithSamples() }
                         }) {
-                            Text(stringResource(R.string.prototype_reset))
+                            Text(stringResource(R.string.debug_reset_samples))
                         }
                     }
                 }
@@ -67,13 +76,17 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun showNotificationOrRequestPermission() {
+    private fun refreshNotificationOrRequestPermission() {
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
             == PackageManager.PERMISSION_GRANTED
         ) {
-            TaskNotifier.show(this)
+            refreshNotification()
         } else {
             requestNotificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
+    }
+
+    private fun refreshNotification() {
+        lifecycleScope.launch { container.notificationUpdater.update() }
     }
 }
