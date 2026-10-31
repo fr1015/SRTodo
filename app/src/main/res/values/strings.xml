@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">SPToDo</string>
+    <string name="app_name">SRTodo</string>
 
     <string name="notification_channel_name">タスク一覧</string>
     <string name="notification_channel_description">未完了のタスクを常に表示します</string>

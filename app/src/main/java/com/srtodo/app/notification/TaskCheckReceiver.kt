@@ -1,4 +1,4 @@
-package com.sptodo.app.notification
+package com.srtodo.app.notification
 
 import android.content.BroadcastReceiver
 import android.content.Context
@@ -20,7 +20,7 @@ class TaskCheckReceiver : BroadcastReceiver() {
     }
 
     companion object {
-        const val EXTRA_TASK_ID = "com.sptodo.app.extra.TASK_ID"
+        const val EXTRA_TASK_ID = "com.srtodo.app.extra.TASK_ID"
         private const val TAG = "TaskCheckReceiver"
     }
 }

@@ -1,4 +1,4 @@
-package com.sptodo.app.notification
+package com.srtodo.app.notification
 
 import java.util.concurrent.TimeUnit
 

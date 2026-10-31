@@ -7,11 +7,11 @@ plugins {
 }
 
 android {
-    namespace = "com.sptodo.app"
+    namespace = "com.srtodo.app"
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "com.sptodo.app"
+        applicationId = "com.srtodo.app"
         minSdk = 31
         targetSdk = 36
         versionCode = 1

@@ -51,7 +51,7 @@
 - Gradle 8.14.5 / AGP 8.13.2 / Kotlin 2.4.20 / KSP 2.3.13 / Room 2.8.5（Room Gradle Plugin でスキーマを `app/schemas` に出力）
 - compileSdk / targetSdk 36（SDKに入っているのは android-36 まで）
 - **Compose BOM は 2026.06.00（Compose 1.11 系）に固定**。2026.08.00 以降（Compose 1.12）は AGP 9.1 以上と compileSdk 37 が必要なため使えない。上げるときは AGP 9 系への移行と SDK 37 の導入をあわせて行うこと
-- パッケージ名 / applicationId: `com.sptodo.app`
+- パッケージ名 / applicationId: `com.srtodo.app`
 - バージョンは `gradle/libs.versions.toml` で管理している
 - ビルド時の「Unable to strip libandroidx.graphics.path.so」は NDK が未導入なだけで、無視してよい
 

@@ -1,4 +1,4 @@
-package com.sptodo.app
+package com.srtodo.app
 
 import android.Manifest
 import android.content.pm.PackageManager
@@ -21,9 +21,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
-import com.sptodo.app.notification.PrototypeTasks
-import com.sptodo.app.notification.TaskNotifier
-import com.sptodo.app.ui.theme.SPToDoTheme
+import com.srtodo.app.notification.PrototypeTasks
+import com.srtodo.app.notification.TaskNotifier
+import com.srtodo.app.ui.theme.SRTodoTheme
 
 class MainActivity : ComponentActivity() {
 
@@ -43,7 +43,7 @@ class MainActivity : ComponentActivity() {
         showNotificationOrRequestPermission()
 
         setContent {
-            SPToDoTheme {
+            SRTodoTheme {
                 Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
                     // Phase 1 の試作用画面。Phase 4 でタスク一覧に置き換える
                     Column(
@@ -51,7 +51,7 @@ class MainActivity : ComponentActivity() {
                         verticalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterVertically),
                         horizontalAlignment = Alignment.CenterHorizontally,
                     ) {
-                        Text("SPToDo")
+                        Text("SRTodo")
                         Button(onClick = { showNotificationOrRequestPermission() }) {
                             Text(stringResource(R.string.prototype_show_notification))
                         }

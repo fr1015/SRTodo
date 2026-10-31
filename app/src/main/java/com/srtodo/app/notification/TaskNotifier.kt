@@ -1,4 +1,4 @@
-package com.sptodo.app.notification
+package com.srtodo.app.notification
 
 import android.Manifest
 import android.app.NotificationChannel
@@ -11,8 +11,8 @@ import android.widget.RemoteViews
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
-import com.sptodo.app.MainActivity
-import com.sptodo.app.R
+import com.srtodo.app.MainActivity
+import com.srtodo.app.R
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter

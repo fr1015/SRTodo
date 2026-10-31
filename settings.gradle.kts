@@ -19,5 +19,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "SPToDo"
+rootProject.name = "SRTodo"
 include(":app")
