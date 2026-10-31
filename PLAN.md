@@ -1,7 +1,7 @@
 # 開発計画・引き継ぎメモ
 
 最終更新: 2026-10-31
-進捗: Phase 3 完了（スワイプ後の再投稿、再起動・アプリ更新後の再表示。エミュレータ（API 36）で確認済み）
+進捗: Phase 4 完了（アプリ画面の仮デザイン、期限切れ表示の自動更新。エミュレータ（API 36）で確認済み）
 デザイン: 作成中のため未定。決まるまでは Material3 標準の仮デザインで進める
 
 ## 決定済みの仕様
@@ -11,6 +11,7 @@
 | タスク0件のとき | 通知を消す（`cancel`）。0件のときはスワイプされても再投稿しない／再起動後も表示しない。タスクが追加されたら再表示する |
 | 期限切れタスク | 通知内で赤字で表示する（アプリ画面も同じ扱いにする） |
 | 期限の粒度 | 日付と時刻（日時ピッカーで設定。`dueAt: Long?` に epoch millis で保存） |
+| 期限切れへの切り替わり | 期限を過ぎたら、操作がなくても通知を赤字に作り直す（`AlarmManager` の RTC アラーム。数分の遅れは許容）。アプリ画面は毎分0秒に表示を更新する |
 
 ## 方針
 - 一番難しいのは通知まわり（RemoteViews のチェックボックスと常駐性）。そのため通知を先に試作して動作を確かめ、アプリ画面は後で作る
@@ -23,7 +24,7 @@
 - [x] **Phase 1：通知の試作（最優先）**：RemoteViews の CheckBox と `setOnCheckedChangeResponse`（API 31以降）で、タップが BroadcastReceiver に届くか確かめる。カスタムレイアウトが通知の高さ制限に収まるかも確認。タスクは固定データでよい
 - [x] **Phase 2：データ層**：`Task`（id, title, dueAt: Long?, isDone, createdAt, completedAt）。DAO は未完了のタスクを期限の近い順に上位3件取る（`ORDER BY dueAt IS NULL, dueAt ASC`）。Repository と NotificationUpdater を作る
 - [x] **Phase 3：通知を消えにくくする**：~~チェックで完了したら Receiver 内で `goAsync()` を使ってDBを更新し、通知を出し直す~~（Phase 2 で前倒し済み）。`setDeleteIntent` でスワイプされたら再投稿する（Android 14以降は ongoing 通知も消せるため必須）。`BOOT_COMPLETED` と `MY_PACKAGE_REPLACED` で再表示。`POST_NOTIFICATIONS` の権限リクエスト（Android 13以降）と通知チャンネルを用意する（Phase 1 で対応済み）
-- [ ] **Phase 4：アプリ画面（仮デザイン）**：一覧、追加・編集（日時ピッカー）、削除、完了済みの表示。色や文字サイズは Theme にまとめておく
+- [x] **Phase 4：アプリ画面（仮デザイン）**：一覧、追加・編集（日時ピッカー）、削除、完了済みの表示。色や文字サイズは Theme にまとめておく
 - [ ] **Phase 5：デザインを反映**：Compose は Theme と各コンポーネントを差し替え、通知は XML レイアウトを差し替える
 - [ ] **Phase 6：仕上げ**：DAOの並び順と繰り上がりのテスト。実機で再起動、スワイプで消す、ダークモード、0件→1件の再表示、期限切れの赤字表示を確認
 
@@ -41,7 +42,7 @@
   - `AppContainer`（手書き DI）を `SRTodoApplication` が持つ。`context.appContainer` で取り出す。通知チャンネルは `Application.onCreate` で作る
 - 並び順：`ORDER BY dueAt IS NULL, dueAt ASC, createdAt ASC, id ASC`（同じ期限・期限なし同士は作成が早い順）。完了済みは `completedAt DESC`
 - Receiver は `goAsync()` ＋ `Dispatchers.IO` のコルーチンで `repository.complete()` を呼ぶ（Room はメインスレッド不可のため Phase 3 から前倒し）
-- 動作確認用：`SampleTasks` と `TaskRepository.replaceWithSamples()`、MainActivity の仮画面（件数表示・「サンプルデータを入れ直す」ボタン）。**Phase 4 でアプリ画面ができたら外す**
+- 動作確認用の `SampleTasks` / `replaceWithSamples()` / 仮画面は Phase 4 で削除済み
 - 確認済み：空のDBでは通知が出ない／サンプル投入で通知が出る／バラバラの順で入れても SQL で正しく並ぶ／チェックで完了し繰り上がる／force-stop 後も状態が残る
 
 ## 常駐性の実装メモ（Phase 3）
@@ -56,8 +57,23 @@
   - 0件で再起動 → `BOOT_COMPLETED` は届くが通知は出ない
 - 未確認：Android 12（API 31）での挙動。ユーザーがアプリを強制停止した場合は、次にアプリを開くまで通知は戻らない（Android の仕様で、強制停止中はブロードキャストが届かないため）
 
+## アプリ画面の実装メモ（Phase 4）
+- 構成（`com.srtodo.app`）
+  - `ui/tasklist/TaskListScreen`：一覧。未完了（通知と同じ並び）→「完了済み（N）」の開閉セクション。行タップで編集、チェックで完了／未完了、完了済みの行はゴミ箱で削除。0件のときは案内文
+  - `ui/tasklist/TaskEditDialog`：追加・編集ダイアログ。期限は「日付（DatePickerDialog）→ 時刻（TimePicker を AlertDialog で包む）」の順に選ぶ。未設定時の初期値は次の正時。編集時は「削除」ボタンあり
+  - `ui/tasklist/TaskListViewModel`：Repository の Flow を StateFlow にして公開。`viewModelFactory` で `AppContainer` から Repository を受け取る
+  - `util/DueFormatter`：期限の表示文字列（通知とアプリ画面で共通）
+  - `ui/theme/Theme`：独自色は `SRTodoTheme.colors`（今は `overdue` のみ。通知と同じ `R.color.task_overdue` を使う）
+- アイコンは Material Icons ライブラリを入れず、`res/drawable` のベクター（`ic_add` / `ic_delete` / `ic_expand`）を使っている
+- LazyColumn のキーは未完了 `p-ID`、完了済み `c-ID`。2つの Flow が別々に更新されるため、移動の瞬間にキーが重なってクラッシュしないようにしている
+- 編集中のタスクは ID で `rememberSaveable` に持つ（画面回転でダイアログが閉じない）。新規は ID=0
+- 期限切れの自動更新：`NotificationUpdater.update()` のたびに、未完了で一番近い未来の期限＋1秒に `AlarmManager.set(RTC)` を登録（無ければ解除）→ `OverdueRefreshReceiver` が通知を作り直す。RTC は端末を起こさないので、スリープ中なら次に画面が点いたときに届く。権限は不要。アラームは再起動・強制停止で消えるが、`BOOT_COMPLETED` とアプリ起動時に `update()` するので登録し直される
+- MainActivity は起動時（初回のみ）に `update()` する。強制停止後に開いたときに通知とアラームを戻すため
+- 確認済み（エミュレータ API 36）：完了済みの表示と開閉／チェックを外して未完了に戻す（0件→1件で通知が出る）／完了済みの削除／追加（タイトル自動フォーカス、日付→時刻、期限順の位置に入る）／編集（期限を外すと赤字が消え最後尾へ）／編集ダイアログから削除／一覧で完了して0件になると通知が消える／13:15 期限のタスクで 13:15:02 にアラームが届き通知が赤字になる／期限がなくなるとアラームが解除される／ダークモード
+- 未確認：タスクが1件もないときの案内文の表示（全件削除の操作はしていない）、画面回転
+- 日付ピッカーの表記（曜日・月名）は端末の言語に従う。エミュレータは en-US のため英語で表示された
+
 ## 未決事項（あとで検討）
-- **時間がたって期限切れになったときの表示**：今は書き込み時と再起動時にしか通知を作り直さないため、期限を過ぎても次の操作まで赤字にならない。次に期限が来る時刻に `AlarmManager` で更新する（`setExact` は権限が要るので、数分ずれてよいなら `setWindow` / `set`）などを検討する
 - **日付の表示**：タイムゾーンや時刻を変更したとき（`TIMEZONE_CHANGED` / `TIME_SET`）にも作り直すか
 
 ## 通知の実装メモ（Phase 1 で確認済み）
@@ -83,4 +99,4 @@
 - ビルド時の「Unable to strip libandroidx.graphics.path.so」は NDK が未導入なだけで、無視してよい
 
 ## 次にやること
-Phase 4（アプリ画面・仮デザイン）に着手する。一覧、追加・編集（日時ピッカー）、削除、完了済みの表示。できたら動作確認用の `SampleTasks` / `replaceWithSamples()` / 仮画面を外す。あわせて「未決事項」の期限切れ表示の更新をどうするか決める
+Phase 5（デザインを反映）はデザインが決まるまで着手できない。それまでは、デザインに関係しない Phase 6 の一部（DAO の並び順と繰り上がりのテスト）を先に進めるのがよい

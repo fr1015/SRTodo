@@ -1,6 +1,5 @@
 package com.srtodo.app.data
 
-import androidx.room.withTransaction
 import com.srtodo.app.notification.NotificationUpdater
 import kotlinx.coroutines.flow.Flow
 
@@ -8,7 +7,7 @@ import kotlinx.coroutines.flow.Flow
  * タスクの読み書きの窓口。DB への書き込みはここに限定し、書き込みのたびに通知を作り直す。
  */
 class TaskRepository(
-    private val database: AppDatabase,
+    database: AppDatabase,
     private val notificationUpdater: NotificationUpdater,
     private val clock: () -> Long = System::currentTimeMillis,
 ) {
@@ -40,14 +39,6 @@ class TaskRepository(
 
     suspend fun delete(id: Long) = writeAndNotify {
         dao.deleteById(id)
-    }
-
-    /** 動作確認用：全タスクを消してサンプルデータを入れ直す。Phase 4 のアプリ画面ができたら外す */
-    suspend fun replaceWithSamples() = writeAndNotify {
-        database.withTransaction {
-            dao.deleteAll()
-            dao.insertAll(SampleTasks.create(clock()))
-        }
     }
 
     private suspend fun <T> writeAndNotify(block: suspend () -> T): T {

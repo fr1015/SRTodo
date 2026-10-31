@@ -28,6 +28,10 @@
             android:name=".notification.NotificationDismissedReceiver"
             android:exported="false" />
 
+        <receiver
+            android:name=".notification.OverdueRefreshReceiver"
+            android:exported="false" />
+
         <!-- システムのブロードキャストを受けるため exported="true"。アクションは Receiver 側でも確認している -->
         <receiver
             android:name=".notification.NotificationRestoreReceiver"

@@ -8,9 +8,27 @@
     <string name="due_overdue">期限切れ %1$s</string>
     <string name="task_check_description">完了にする</string>
 
-    <!-- 動作確認用の仮画面（Phase 4 で置き換える） -->
-    <string name="debug_counts">未完了 %1$d 件 ／ 完了済み %2$d 件</string>
-    <string name="debug_show_notification">通知を表示</string>
-    <string name="debug_reset_samples">サンプルデータを入れ直す</string>
-    <string name="debug_permission_denied">通知が許可されていません。設定から許可してください</string>
+    <string name="notification_permission_denied">通知が許可されていないため、通知欄にタスクを表示できません。設定から許可してください</string>
+
+    <!-- タスク一覧 -->
+    <string name="empty_all">タスクはありません\n右下の＋から追加できます</string>
+    <string name="empty_pending">未完了のタスクはありません</string>
+    <string name="completed_header">完了済み（%1$d）</string>
+    <string name="completed_at">完了 %1$s</string>
+    <string name="action_add">タスクを追加</string>
+    <string name="action_delete">削除</string>
+    <string name="action_expand">開く</string>
+    <string name="action_collapse">閉じる</string>
+
+    <!-- 追加・編集ダイアログ -->
+    <string name="dialog_title_add">タスクを追加</string>
+    <string name="dialog_title_edit">タスクを編集</string>
+    <string name="field_title">タイトル</string>
+    <string name="field_due">期限</string>
+    <string name="due_set">期限を設定</string>
+    <string name="due_clear">なしにする</string>
+    <string name="action_save">保存</string>
+    <string name="action_cancel">キャンセル</string>
+    <string name="action_next">次へ</string>
+    <string name="action_ok">OK</string>
 </resources>

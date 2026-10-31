@@ -1,6 +1,7 @@
 package com.srtodo.app.notification
 
 import android.Manifest
+import android.app.AlarmManager
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
@@ -15,16 +16,14 @@ import com.srtodo.app.MainActivity
 import com.srtodo.app.R
 import com.srtodo.app.data.Task
 import com.srtodo.app.data.TaskDao
+import com.srtodo.app.util.DueFormatter
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import java.time.Instant
-import java.time.ZoneId
-import java.time.format.DateTimeFormatter
-import java.util.Locale
 
 /**
  * DB の内容から常駐通知を作り直す。
  * 折りたたみ時は1件、展開時は最大3件を RemoteViews で表示する。0件なら通知を消す。
+ * 次の期限が来たら作り直せるよう、アラームの登録もここで行う。
  * DB は読むだけで、書き込みは TaskRepository が行う。
  */
 class NotificationUpdater(
@@ -57,6 +56,9 @@ class NotificationUpdater(
             != PackageManager.PERMISSION_GRANTED
         ) return@withLock
 
+        val now = clock()
+        scheduleOverdueRefresh(dao.getNextDueAfter(now))
+
         val manager = NotificationManagerCompat.from(context)
         val tasks = dao.getPendingTop(MAX_EXPANDED)
         if (tasks.isEmpty()) {
@@ -64,7 +66,6 @@ class NotificationUpdater(
             return@withLock
         }
         val pendingCount = dao.countPending()
-        val now = clock()
 
         val openApp = PendingIntent.getActivity(
             context,
@@ -97,6 +98,26 @@ class NotificationUpdater(
         manager.notify(NOTIFICATION_ID, notification)
     }
 
+    /**
+     * 次の期限の直後に OverdueRefreshReceiver が呼ばれるようにする。期限が無ければ解除する。
+     * 端末を起こさない RTC アラームなので権限は不要。スリープ中なら次に画面が点いたときに届く。
+     */
+    private fun scheduleOverdueRefresh(nextDueAt: Long?) {
+        val alarmManager = context.getSystemService(AlarmManager::class.java)
+        val pendingIntent = PendingIntent.getBroadcast(
+            context,
+            0,
+            Intent(context, OverdueRefreshReceiver::class.java),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+        if (nextDueAt == null) {
+            alarmManager.cancel(pendingIntent)
+        } else {
+            // isOverdue は dueAt < now で判定するため、少し後にする
+            alarmManager.set(AlarmManager.RTC, nextDueAt + OVERDUE_MARGIN_MILLIS, pendingIntent)
+        }
+    }
+
     private fun buildList(tasks: List<Task>, now: Long): RemoteViews {
         val list = RemoteViews(context.packageName, R.layout.notification_task_list)
         list.removeAllViews(R.id.task_container)
@@ -107,7 +128,7 @@ class NotificationUpdater(
     private fun buildRow(task: Task, now: Long): RemoteViews {
         val row = RemoteViews(context.packageName, R.layout.notification_task_row)
         row.setTextViewText(R.id.task_title, task.title)
-        row.setTextViewText(R.id.task_due, formatDue(task, now))
+        row.setTextViewText(R.id.task_due, DueFormatter.format(context, task, now))
 
         if (task.isOverdue(now)) {
             // 通知側のコンテキストで色リソースを解決させ、ライト／ダークを自動で切り替える（API 31以降）
@@ -131,17 +152,11 @@ class NotificationUpdater(
         return row
     }
 
-    private fun formatDue(task: Task, now: Long): String {
-        val dueAt = task.dueAt ?: return context.getString(R.string.due_none)
-        val text = Instant.ofEpochMilli(dueAt).atZone(ZoneId.systemDefault()).format(DUE_FORMATTER)
-        return if (task.isOverdue(now)) context.getString(R.string.due_overdue, text) else text
-    }
-
     companion object {
         const val CHANNEL_ID = "tasks"
         private const val NOTIFICATION_ID = 1
         private const val MAX_EXPANDED = 3
         private const val MAX_COLLAPSED = 1
-        private val DUE_FORMATTER = DateTimeFormatter.ofPattern("M/d(E) HH:mm", Locale.JAPAN)
+        private const val OVERDUE_MARGIN_MILLIS = 1_000L
     }
 }
