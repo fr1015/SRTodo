@@ -1,7 +1,7 @@
 # 開発計画・引き継ぎメモ
 
 最終更新: 2026-10-31
-進捗: Phase 2 完了（Room のデータ層と NotificationUpdater。エミュレータ（API 36）で並び順・完了・プロセス再起動後の永続化を確認済み）
+進捗: Phase 3 完了（スワイプ後の再投稿、再起動・アプリ更新後の再表示。エミュレータ（API 36）で確認済み）
 デザイン: 作成中のため未定。決まるまでは Material3 標準の仮デザインで進める
 
 ## 決定済みの仕様
@@ -22,7 +22,7 @@
 - [x] **Phase 0：プロジェクトの準備**：`git init`、Compose の雛形を作る（minSdk 31）。Room / KSP / Coroutines を追加し、`./gradlew assembleDebug` が通ることを確認
 - [x] **Phase 1：通知の試作（最優先）**：RemoteViews の CheckBox と `setOnCheckedChangeResponse`（API 31以降）で、タップが BroadcastReceiver に届くか確かめる。カスタムレイアウトが通知の高さ制限に収まるかも確認。タスクは固定データでよい
 - [x] **Phase 2：データ層**：`Task`（id, title, dueAt: Long?, isDone, createdAt, completedAt）。DAO は未完了のタスクを期限の近い順に上位3件取る（`ORDER BY dueAt IS NULL, dueAt ASC`）。Repository と NotificationUpdater を作る
-- [ ] **Phase 3：通知を消えにくくする**：~~チェックで完了したら Receiver 内で `goAsync()` を使ってDBを更新し、通知を出し直す~~（Phase 2 で前倒し済み）。`setDeleteIntent` でスワイプされたら再投稿する（Android 14以降は ongoing 通知も消せるため必須）。`BOOT_COMPLETED` と `MY_PACKAGE_REPLACED` で再表示。`POST_NOTIFICATIONS` の権限リクエスト（Android 13以降）と通知チャンネルを用意する
+- [x] **Phase 3：通知を消えにくくする**：~~チェックで完了したら Receiver 内で `goAsync()` を使ってDBを更新し、通知を出し直す~~（Phase 2 で前倒し済み）。`setDeleteIntent` でスワイプされたら再投稿する（Android 14以降は ongoing 通知も消せるため必須）。`BOOT_COMPLETED` と `MY_PACKAGE_REPLACED` で再表示。`POST_NOTIFICATIONS` の権限リクエスト（Android 13以降）と通知チャンネルを用意する（Phase 1 で対応済み）
 - [ ] **Phase 4：アプリ画面（仮デザイン）**：一覧、追加・編集（日時ピッカー）、削除、完了済みの表示。色や文字サイズは Theme にまとめておく
 - [ ] **Phase 5：デザインを反映**：Compose は Theme と各コンポーネントを差し替え、通知は XML レイアウトを差し替える
 - [ ] **Phase 6：仕上げ**：DAOの並び順と繰り上がりのテスト。実機で再起動、スワイプで消す、ダークモード、0件→1件の再表示、期限切れの赤字表示を確認
@@ -43,6 +43,22 @@
 - Receiver は `goAsync()` ＋ `Dispatchers.IO` のコルーチンで `repository.complete()` を呼ぶ（Room はメインスレッド不可のため Phase 3 から前倒し）
 - 動作確認用：`SampleTasks` と `TaskRepository.replaceWithSamples()`、MainActivity の仮画面（件数表示・「サンプルデータを入れ直す」ボタン）。**Phase 4 でアプリ画面ができたら外す**
 - 確認済み：空のDBでは通知が出ない／サンプル投入で通知が出る／バラバラの順で入れても SQL で正しく並ぶ／チェックで完了し繰り上がる／force-stop 後も状態が残る
+
+## 常駐性の実装メモ（Phase 3）
+- `NotificationDismissedReceiver`（exported=false）：`setDeleteIntent` で呼ばれ、`NotificationUpdater.update()` で出し直す。アプリ自身の `cancel()` では呼ばれないので、0件で消したときに再投稿されることはない
+- `NotificationRestoreReceiver`（exported=true、`RECEIVE_BOOT_COMPLETED` 権限）：`BOOT_COMPLETED` と `MY_PACKAGE_REPLACED` で出し直す。exported なので、想定外のアクションは Receiver 側で無視している
+- Receiver 共通の `goAsync()` 処理は `notification/ReceiverAsync.kt` の `launchAsync()` にまとめた
+- 確認済み（エミュレータ API 36）
+  - スワイプで消す → すぐに再投稿される
+  - 「すべて消去」→ ongoing 通知はそもそも消えない（Receiver も呼ばれない）
+  - アプリ更新（`adb install -r`）→ 更新時に通知が消え、約8秒後に `MY_PACKAGE_REPLACED` で再表示
+  - 端末再起動 → 起動完了から約45秒後に `BOOT_COMPLETED` が届いて再表示（届くまでの時間は端末次第）
+  - 0件で再起動 → `BOOT_COMPLETED` は届くが通知は出ない
+- 未確認：Android 12（API 31）での挙動。ユーザーがアプリを強制停止した場合は、次にアプリを開くまで通知は戻らない（Android の仕様で、強制停止中はブロードキャストが届かないため）
+
+## 未決事項（あとで検討）
+- **時間がたって期限切れになったときの表示**：今は書き込み時と再起動時にしか通知を作り直さないため、期限を過ぎても次の操作まで赤字にならない。次に期限が来る時刻に `AlarmManager` で更新する（`setExact` は権限が要るので、数分ずれてよいなら `setWindow` / `set`）などを検討する
+- **日付の表示**：タイムゾーンや時刻を変更したとき（`TIMEZONE_CHANGED` / `TIME_SET`）にも作り直すか
 
 ## 通知の実装メモ（Phase 1 で確認済み）
 - 構成：`notification/NotificationUpdater`（Phase 1 の `TaskNotifier` から改名。通知の組み立て・投稿）、`TaskCheckReceiver`（チェック受信）
@@ -67,4 +83,4 @@
 - ビルド時の「Unable to strip libandroidx.graphics.path.so」は NDK が未導入なだけで、無視してよい
 
 ## 次にやること
-Phase 3（通知を消えにくくする）に着手する。`setDeleteIntent` でスワイプ後に再投稿、`BOOT_COMPLETED` / `MY_PACKAGE_REPLACED` で再表示する（どちらも0件なら出さない）
+Phase 4（アプリ画面・仮デザイン）に着手する。一覧、追加・編集（日時ピッカー）、削除、完了済みの表示。できたら動作確認用の `SampleTasks` / `replaceWithSamples()` / 仮画面を外す。あわせて「未決事項」の期限切れ表示の更新をどうするか決める

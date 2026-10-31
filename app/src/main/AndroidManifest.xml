@@ -2,6 +2,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
     <application
         android:name=".SRTodoApplication"
@@ -22,6 +23,20 @@
         <receiver
             android:name=".notification.TaskCheckReceiver"
             android:exported="false" />
+
+        <receiver
+            android:name=".notification.NotificationDismissedReceiver"
+            android:exported="false" />
+
+        <!-- システムのブロードキャストを受けるため exported="true"。アクションは Receiver 側でも確認している -->
+        <receiver
+            android:name=".notification.NotificationRestoreReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
     </application>
 
 </manifest>

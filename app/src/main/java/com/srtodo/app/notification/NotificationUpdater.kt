@@ -72,6 +72,13 @@ class NotificationUpdater(
             Intent(context, MainActivity::class.java),
             PendingIntent.FLAG_IMMUTABLE,
         )
+        // スワイプなどで消されたら NotificationDismissedReceiver で出し直す
+        val onDismiss = PendingIntent.getBroadcast(
+            context,
+            0,
+            Intent(context, NotificationDismissedReceiver::class.java),
+            PendingIntent.FLAG_IMMUTABLE,
+        )
 
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_notification)
@@ -80,6 +87,7 @@ class NotificationUpdater(
             .setCustomBigContentView(buildList(tasks, now))
             .setSubText(context.getString(R.string.notification_remaining, pendingCount))
             .setContentIntent(openApp)
+            .setDeleteIntent(onDismiss)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .setSilent(true)
