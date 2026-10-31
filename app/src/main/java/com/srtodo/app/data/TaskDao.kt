@@ -27,8 +27,11 @@ interface TaskDao {
     @Query("SELECT COUNT(*) FROM tasks WHERE isDone = 0")
     suspend fun countPending(): Int
 
-    /** 未完了タスクのうち、[now] より後で最も近い期限。期限切れ表示を更新するアラームに使う */
-    @Query("SELECT MIN(dueAt) FROM tasks WHERE isDone = 0 AND dueAt > :now")
+    /**
+     * 未完了タスクのうち、まだ期限切れになっていない（dueAt >= now）最も近い期限。期限切れ表示を更新するアラームに使う。
+     * Task.isOverdue は dueAt < now なので、dueAt == now のタスクもこれから期限切れになる対象に含める。
+     */
+    @Query("SELECT MIN(dueAt) FROM tasks WHERE isDone = 0 AND dueAt >= :now")
     suspend fun getNextDueAfter(now: Long): Long?
 
     /** アプリ画面用：未完了のタスク（通知と同じ並び） */

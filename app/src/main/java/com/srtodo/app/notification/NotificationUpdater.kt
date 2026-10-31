@@ -15,6 +15,7 @@ import androidx.core.content.ContextCompat
 import com.srtodo.app.MainActivity
 import com.srtodo.app.R
 import com.srtodo.app.data.Task
+import com.srtodo.app.data.TaskChangeListener
 import com.srtodo.app.data.TaskDao
 import com.srtodo.app.util.DueFormatter
 import kotlinx.coroutines.sync.Mutex
@@ -30,7 +31,7 @@ class NotificationUpdater(
     context: Context,
     private val dao: TaskDao,
     private val clock: () -> Long = System::currentTimeMillis,
-) {
+) : TaskChangeListener {
     private val context = context.applicationContext
 
     /** 連続した書き込みで通知の更新が前後しないよう、1つずつ順番に行う */
@@ -50,6 +51,8 @@ class NotificationUpdater(
         }
         context.getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
     }
+
+    override suspend fun onTasksChanged() = update()
 
     suspend fun update() = mutex.withLock {
         if (ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS)

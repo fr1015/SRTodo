@@ -1,14 +1,14 @@
 package com.srtodo.app.data
 
-import com.srtodo.app.notification.NotificationUpdater
 import kotlinx.coroutines.flow.Flow
 
 /**
- * タスクの読み書きの窓口。DB への書き込みはここに限定し、書き込みのたびに通知を作り直す。
+ * タスクの読み書きの窓口。DB への書き込みはここに限定し、書き込みのたびに [changeListener] へ知らせる
+ * （本番では NotificationUpdater が通知を作り直す）。
  */
 class TaskRepository(
     database: AppDatabase,
-    private val notificationUpdater: NotificationUpdater,
+    private val changeListener: TaskChangeListener,
     private val clock: () -> Long = System::currentTimeMillis,
 ) {
     private val dao = database.taskDao()
@@ -43,7 +43,7 @@ class TaskRepository(
 
     private suspend fun <T> writeAndNotify(block: suspend () -> T): T {
         val result = block()
-        notificationUpdater.update()
+        changeListener.onTasksChanged()
         return result
     }
 }
