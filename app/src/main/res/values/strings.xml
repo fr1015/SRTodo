@@ -1,3 +1,14 @@
 <resources>
     <string name="app_name">SPToDo</string>
+
+    <string name="notification_channel_name">タスク一覧</string>
+    <string name="notification_channel_description">未完了のタスクを常に表示します</string>
+    <string name="notification_remaining">残り %1$d 件</string>
+    <string name="due_none">期限なし</string>
+    <string name="due_overdue">期限切れ %1$s</string>
+    <string name="task_check_description">完了にする</string>
+
+    <string name="prototype_show_notification">試作通知を表示</string>
+    <string name="prototype_reset">固定データを元に戻す</string>
+    <string name="prototype_permission_denied">通知が許可されていません。設定から許可してください</string>
 </resources>

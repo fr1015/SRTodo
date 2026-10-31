@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- ダークテーマでは暗い背景で読めるよう明るめの赤にする -->
+    <color name="task_overdue">#FF8A80</color>
+</resources>

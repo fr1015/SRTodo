@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 期限切れタスクの文字色（仮）。デザイン確定後に差し替える -->
+    <color name="task_overdue">#C62828</color>
+</resources>

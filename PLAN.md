@@ -1,7 +1,7 @@
 # 開発計画・引き継ぎメモ
 
 最終更新: 2026-10-31
-進捗: Phase 0 完了（雛形を作成し、assembleDebug が通る状態。初回コミット済み）
+進捗: Phase 1 完了（通知の試作。エミュレータ（API 36）でチェック→繰り上がり→0件で消えるまで確認済み）
 デザイン: 作成中のため未定。決まるまでは Material3 標準の仮デザインで進める
 
 ## 決定済みの仕様
@@ -20,7 +20,7 @@
 
 ## 段取り
 - [x] **Phase 0：プロジェクトの準備**：`git init`、Compose の雛形を作る（minSdk 31）。Room / KSP / Coroutines を追加し、`./gradlew assembleDebug` が通ることを確認
-- [ ] **Phase 1：通知の試作（最優先）**：RemoteViews の CheckBox と `setOnCheckedChangeResponse`（API 31以降）で、タップが BroadcastReceiver に届くか確かめる。カスタムレイアウトが通知の高さ制限に収まるかも確認。タスクは固定データでよい
+- [x] **Phase 1：通知の試作（最優先）**：RemoteViews の CheckBox と `setOnCheckedChangeResponse`（API 31以降）で、タップが BroadcastReceiver に届くか確かめる。カスタムレイアウトが通知の高さ制限に収まるかも確認。タスクは固定データでよい
 - [ ] **Phase 2：データ層**：`Task`（id, title, dueAt: Long?, isDone, createdAt, completedAt）。DAO は未完了のタスクを期限の近い順に上位3件取る（`ORDER BY dueAt IS NULL, dueAt ASC`）。Repository と NotificationUpdater を作る
 - [ ] **Phase 3：通知を消えにくくする**：チェックで完了したら Receiver 内で `goAsync()` を使ってDBを更新し、通知を出し直す（次のタスクが繰り上がる）。`setDeleteIntent` でスワイプされたら再投稿する（Android 14以降は ongoing 通知も消せるため必須）。`BOOT_COMPLETED` と `MY_PACKAGE_REPLACED` で再表示。`POST_NOTIFICATIONS` の権限リクエスト（Android 13以降）と通知チャンネルを用意する
 - [ ] **Phase 4：アプリ画面（仮デザイン）**：一覧、追加・編集（日時ピッカー）、削除、完了済みの表示。色や文字サイズは Theme にまとめておく
@@ -33,6 +33,19 @@
 - 通知の外枠（アプリ名・アイコンの行）はシステムが描く。デザインできるのは中身の部分だけ
 - ライトとダーク、両方のテーマに対応すること
 
+## 通知の実装メモ（Phase 1 で確認済み）
+- 構成：`notification/TaskNotifier`（通知の組み立て・投稿）、`TaskCheckReceiver`（チェック受信）、`PrototypeTasks`（試作用の固定データ。Phase 2 で Repository に置き換える）
+- レイアウト：`notification_task_list.xml`（枠）に `notification_task_row.xml`（1行48dp）を `addView` する。折りたたみ時1件・展開時3件で、`DecoratedCustomViewStyle` を使う
+- チェック：`setOnCheckedChangeResponse` ＋ `RemoteResponse.fromPendingIntent` で Receiver に届く。チェック状態は `RemoteViews.EXTRA_CHECKED` で受け取る。fill-in されるため **PendingIntent は `FLAG_MUTABLE` 必須**（明示的 Intent なので Android 14 の制限に当たらない）。requestCode はタスクIDにして行ごとに分ける
+- 折りたたみ時のチェックボックスも動作する
+- 期限切れの赤字：`setColorStateList(id, "setTextColor", R.color.task_overdue)`（API 31以降）で通知側のコンテキストで色を解決させ、`values` / `values-night` でライト／ダークを切り替えている
+- 文字色は `TextAppearance.Compat.Notification.Title` / `.Info` を使い、ダークモードでも自動で切り替わる
+- 「残り N 件」は `setSubText` でヘッダーに出す（展開時のみ見える）
+- 通知チャンネルは `IMPORTANCE_DEFAULT`（音・バイブなし）。LOW だと「サイレント」欄に入るため
+- 長いタイトルは1行で末尾が「…」になる
+- 気になった点（デザイナー向け）：ダークモードでは未チェックのチェックボックスの枠が暗く、目立ちにくい
+- 未確認：Android 12（API 31）の実機・エミュレータでの見た目（今回は API 36 で確認）
+
 ## ビルド環境（Phase 0 で確定）
 - JDK 21（Temurin）。インストールされているのは21だけなので、ツールチェーンは指定せず、`jvmTarget` と `compileOptions` で 17 を指定している
 - Gradle 8.14.5 / AGP 8.13.2 / Kotlin 2.4.20 / KSP 2.3.13 / Room 2.8.5（Room Gradle Plugin でスキーマを `app/schemas` に出力）
@@ -43,4 +56,4 @@
 - ビルド時の「Unable to strip libandroidx.graphics.path.so」は NDK が未導入なだけで、無視してよい
 
 ## 次にやること
-Phase 1（通知の試作）に着手する
+Phase 2（データ層）に着手する。`PrototypeTasks` を Room の `Task` ＋ Repository に置き換え、`TaskNotifier` を `NotificationUpdater` として DB から読むようにする
