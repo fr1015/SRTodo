@@ -4,7 +4,7 @@ import kotlinx.coroutines.flow.Flow
 
 /**
  * タスクの読み書きの窓口。DB への書き込みはここに限定し、書き込みのたびに [changeListener] へ知らせる
- * （本番では NotificationUpdater が通知を作り直す）。
+ * （本番では TaskNotificationController が通知を作り直す）。
  */
 class TaskRepository(
     database: AppDatabase,

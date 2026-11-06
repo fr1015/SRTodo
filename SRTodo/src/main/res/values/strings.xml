@@ -31,4 +31,11 @@
     <string name="action_cancel">キャンセル</string>
     <string name="action_next">次へ</string>
     <string name="action_ok">OK</string>
+
+    <!-- 設定 -->
+    <string name="settings_title">設定</string>
+    <string name="action_settings">設定</string>
+    <string name="action_back">戻る</string>
+    <string name="setting_pin_notification">通知に固定表示する</string>
+    <string name="setting_pin_notification_summary">オンにすると、他のアプリの通知が来ても通知欄の一番上に表示されます。オフにすると通常の通知になり、新しい通知の下に表示されます</string>
 </resources>

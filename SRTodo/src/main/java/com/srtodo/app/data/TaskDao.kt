@@ -24,8 +24,23 @@ interface TaskDao {
     )
     suspend fun getPendingTop(limit: Int): List<Task>
 
+    /** 常駐サービス用：[getPendingTop] と同じ内容を、変化するたびに流す */
+    @Query(
+        """
+        SELECT * FROM tasks
+        WHERE isDone = 0
+        ORDER BY dueAt IS NULL, dueAt ASC, createdAt ASC, id ASC
+        LIMIT :limit
+        """
+    )
+    fun observePendingTop(limit: Int): Flow<List<Task>>
+
     @Query("SELECT COUNT(*) FROM tasks WHERE isDone = 0")
     suspend fun countPending(): Int
+
+    /** 常駐サービス用：未完了の件数（「残り N 件」の表示に使う） */
+    @Query("SELECT COUNT(*) FROM tasks WHERE isDone = 0")
+    fun observePendingCount(): Flow<Int>
 
     /**
      * 未完了タスクのうち、まだ期限切れになっていない（dueAt >= now）最も近い期限。期限切れ表示を更新するアラームに使う。

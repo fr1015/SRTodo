@@ -51,7 +51,10 @@ private const val NEW_TASK_ID = 0L
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun TaskListScreen(viewModel: TaskListViewModel = viewModel(factory = TaskListViewModel.Factory)) {
+fun TaskListScreen(
+    onOpenSettings: () -> Unit,
+    viewModel: TaskListViewModel = viewModel(factory = TaskListViewModel.Factory),
+) {
     val pending by viewModel.pending.collectAsStateWithLifecycle()
     val completed by viewModel.completed.collectAsStateWithLifecycle()
     val now by rememberCurrentTimeMinutely()
@@ -61,7 +64,19 @@ fun TaskListScreen(viewModel: TaskListViewModel = viewModel(factory = TaskListVi
     var showCompleted by rememberSaveable { mutableStateOf(false) }
 
     Scaffold(
-        topBar = { TopAppBar(title = { Text(stringResource(R.string.app_name)) }) },
+        topBar = {
+            TopAppBar(
+                title = { Text(stringResource(R.string.app_name)) },
+                actions = {
+                    IconButton(onClick = onOpenSettings) {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_settings),
+                            contentDescription = stringResource(R.string.action_settings),
+                        )
+                    }
+                },
+            )
+        },
         floatingActionButton = {
             FloatingActionButton(onClick = { editingId = NEW_TASK_ID }) {
                 Icon(

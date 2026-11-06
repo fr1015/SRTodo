@@ -228,6 +228,54 @@ class TaskDaoTest {
         assertEquals(NOW, dao.getNextDueAfter(NOW))
     }
 
+    // --- 常駐サービス用の Flow ---
+
+    @Test
+    fun 上位の_Flow_は_getPendingTop_と同じ並びで3件() = runTest {
+        insert("期限なし", dueAt = null)
+        insert("3日後", dueAt = NOW + 3 * DAY)
+        insert("期限切れ", dueAt = NOW - HOUR)
+        insert("1時間後", dueAt = NOW + HOUR)
+
+        val observed = dao.observePendingTop(3).first().map { it.title }
+        assertEquals(listOf("期限切れ", "1時間後", "3日後"), observed)
+        assertEquals(pendingTitles(3), observed)
+    }
+
+    @Test
+    fun 完了すると上位の_Flow_に4件目が繰り上がって流れる() = runTest {
+        val first = insert("1時間後", dueAt = NOW + HOUR)
+        insert("2時間後", dueAt = NOW + 2 * HOUR)
+        insert("3時間後", dueAt = NOW + 3 * HOUR)
+        insert("期限なし", dueAt = null)
+
+        dao.markDone(first, NOW)
+
+        assertEquals(
+            listOf("2時間後", "3時間後", "期限なし"),
+            dao.observePendingTop(3).first().map { it.title },
+        )
+        assertEquals(3, dao.observePendingCount().first())
+    }
+
+    @Test
+    fun 件数の_Flow_は未完了だけを数える() = runTest {
+        insert("未完了1", dueAt = null)
+        insert("未完了2", dueAt = NOW + HOUR)
+        insert("完了済み", dueAt = NOW, isDone = true)
+
+        assertEquals(2, dao.observePendingCount().first())
+    }
+
+    @Test
+    fun 全部完了すると上位の_Flow_は空になる() = runTest {
+        val id = insert("1件だけ", dueAt = null)
+        dao.markDone(id, NOW)
+
+        assertTrue(dao.observePendingTop(3).first().isEmpty())
+        assertEquals(0, dao.observePendingCount().first())
+    }
+
     private companion object {
         const val NOW = 1_800_000_000_000L
         const val MINUTE = 60_000L

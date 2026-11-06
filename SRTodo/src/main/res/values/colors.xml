@@ -2,4 +2,10 @@
 <resources>
     <!-- 期限切れタスクの文字色（仮）。デザイン確定後に差し替える -->
     <color name="task_overdue">#C62828</color>
+    <!-- 固定表示の通知の背景色（仮）。デザイン確定後に差し替える -->
+    <color name="notification_pinned">#1E5AA8</color>
+    <!-- 固定表示の通知の文字色。背景色はライト／ダークで変わらないため values-night には置かない -->
+    <color name="notification_pinned_text">#FFFFFF</color>
+    <color name="notification_pinned_text_secondary">#D6E2F5</color>
+    <color name="notification_pinned_overdue">#FFB4AB</color>
 </resources>

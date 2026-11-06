@@ -1,7 +1,7 @@
 # 開発計画・引き継ぎメモ
 
 最終更新: 2026-11-06
-進捗: Phase 4 完了。Phase 6 のうち DAO / Repository のテストを追加済み（Phase 5 は保留）
+進捗: Phase 4 完了。Phase 6 のうち DAO / Repository のテストを追加済み（Phase 5 は保留）。2026-11-06 に通知をフォアグラウンドサービスで固定表示にした
 デザイン: 当面は Material3 標準の仮デザインのままでよい（2026-10-31 に決定）。Phase 5 は保留
 
 ## 決定済みの仕様
@@ -12,7 +12,11 @@
 | 期限切れタスク | 通知内で赤字で表示する（アプリ画面も同じ扱いにする） |
 | 期限の粒度 | 日付と時刻（日時ピッカーで設定。`dueAt: Long?` に epoch millis で保存） |
 | 期限切れへの切り替わり | 期限を過ぎたら、操作がなくても通知を赤字に作り直す（`AlarmManager` の RTC アラーム。数分の遅れは許容）。アプリ画面は毎分0秒に表示を更新する |
-| 通知欄での位置（2026-11-06） | 通常の通知（`setOngoing(true)`）のまま運用し、フォアグラウンドサービスや通知へのアクセス権限は使わない。他アプリの通知に押し下げられる問題には、データ変更時・期限・日付の切り替わり（0時）に作り直して `when` を新しくし、上に戻すことで対応する。チャンネルは `IMPORTANCE_HIGH`、`setOnlyAlertOnce(true)` と `setSilent(true)` で音・ポップアップは出さない |
+| 通知欄での位置（2026-11-06 改定） | ~~通常の通知のまま `when` を新しくして上に戻す~~ → **色付きのフォアグラウンドサービス（`specialUse`）の通知にして、通知欄の一番上の枠に固定する**。端末の負担を最小にするため「何もしないサービス＋イベントのときだけ作り直す」にする（ループ・定期確認・WakeLock・`ACTION_TIME_TICK`・電池最適化の除外は使わない）。Play ストアには公開しない前提 |
+| 固定表示の設定 | 設定画面に「通知に固定表示する」（既定オン）。オフならサービスは使わず、通常の常駐通知（作り直すたびに `when` を新しくして上に戻す方式）を出す |
+| 通知の形 | 今の RemoteViews＋チェックボックスのまま（InboxStyle にはしない） |
+| 期限の表記 | 絶対表記のまま（「今日」「明日」などの相対表記は一旦なし）。そのため画面点灯（`ACTION_SCREEN_ON`）での作り直しもしない。相対表記を入れるなら、サービス内で `SCREEN_ON` を動的登録して作り直す |
+| 通知チャンネル | `IMPORTANCE_DEFAULT`（ID `task_list`）、音・バイブなし、`setOnlyAlertOnce(true)` |
 
 ## 方針
 - 一番難しいのは通知まわり（RemoteViews のチェックボックスと常駐性）。そのため通知を先に試作して動作を確かめ、アプリ画面は後で作る
@@ -85,9 +89,11 @@
 - Repository から通知を作り直す部分は `data/TaskChangeListener` に切り出した（本番は `NotificationUpdater` が実装）。テストでは呼ばれた回数を数える偽物を渡すので、テスト中に通知は出ない
 - テストを書いていて見つけた不具合：`getNextDueAfter` が `dueAt > now` だったため、期限がちょうど現在時刻のタスクにアラームが登録されず赤字に切り替わらない可能性があった。`dueAt >= now` に修正（アラームは `dueAt + 1秒` なので、同じ時刻に登録し直し続けることはない）
 - 結果（2026-10-31、Pixel_8 エミュレータ API 36）：単体 5件、エミュレータ上 23件、すべて成功
+- 2026-11-06 に追加：`RefreshAlarmTest`（次に作り直す時刻。JVM）、`TaskDaoTest` に常駐サービス用の Flow（上位3件・件数）のテスト。結果：単体 10件、エミュレータ上 27件、すべて成功
 
 ## 未決事項（あとで検討）
-- **日付の表示**：タイムゾーンや時刻を変更したとき（`TIMEZONE_CHANGED` / `TIME_SET`）にも作り直すか
+- ~~**日付の表示**：タイムゾーンや時刻を変更したとき（`TIMEZONE_CHANGED` / `TIME_SET`）にも作り直すか~~ → 2026-11-06 に対応済み
+- **相対表記**（「今日」「明日」）を入れるか。入れる場合は画面点灯での作り直しもあわせて入れる
 
 ## 通知の実装メモ（Phase 1 で確認済み）
 - 構成：`notification/NotificationUpdater`（Phase 1 の `TaskNotifier` から改名。通知の組み立て・投稿）、`TaskCheckReceiver`（チェック受信）
@@ -97,15 +103,53 @@
 - 期限切れの赤字：`setColorStateList(id, "setTextColor", R.color.task_overdue)`（API 31以降）で通知側のコンテキストで色を解決させ、`values` / `values-night` でライト／ダークを切り替えている
 - 文字色は `TextAppearance.Compat.Notification.Title` / `.Info` を使い、ダークモードでも自動で切り替わる
 - 「残り N 件」は `setSubText` でヘッダーに出す（展開時のみ見える）
-- 通知チャンネルは ~~`IMPORTANCE_DEFAULT`~~ → 2026-11-06 に `IMPORTANCE_HIGH`（ID `tasks_top`）に変更（音・バイブなし）。LOW だと「サイレント」欄に入るため DEFAULT 以上にする。既存チャンネルの重要度はアプリから上げられないので ID を変え、旧チャンネル `tasks` は `createChannel()` で削除している
+- 通知チャンネルは `IMPORTANCE_DEFAULT`（ID `task_list`、音・バイブなし）。LOW だと「サイレント」欄に入るため DEFAULT 以上にする。一時期 HIGH（ID `tasks_top`）にしたが、並び順に効果がなかったため DEFAULT に戻した。旧チャンネル `tasks` / `tasks_top` は `createChannel()` で削除している
 - 通知欄の並び順（2026-11-06 に API 36 で調査）
   - 重要度を HIGH にしても、後から来た DEFAULT の通知の下に表示された。最近の Android は重要度を「DEFAULT 以上か」でしか比べず、その中では新しい順に並ぶため
-  - 常に最上部に固定できるのは、通話・メディア・会話・色付きフォアグラウンドサービスの通知だけ。今回は採用しない（決定済みの仕様を参照）
+  - 常に最上部に固定できるのは、通話・メディア・会話・色付きフォアグラウンドサービスの通知だけ。→ 色付きフォアグラウンドサービスを採用した（「固定表示の実装メモ」を参照）
   - 通知を作り直す（`notify()` で更新する、またはスワイプ後に再投稿する）と `when` が新しくなり、一番上に戻ることを確認した。`setWhen(now)` を明示している
-  - HIGH にしても `setSilent(true)` により、0件→1件で新しく出したときもポップアップは出なかった
 - 長いタイトルは1行で末尾が「…」になる
 - 気になった点（デザイナー向け）：ダークモードでは未チェックのチェックボックスの枠が暗く、目立ちにくい
 - 未確認：Android 12（API 31）の実機・エミュレータでの見た目（今回は API 36 で確認）
+
+## 固定表示（フォアグラウンドサービス）の実装メモ（2026-11-06）
+- 構成（`com.srtodo.app`）
+  - `notification/TaskNotificationService`：`startForeground()` で通知を持って待つだけ。戻り値は `START_STICKY`。`observePendingTop(3)` と `observePendingCount()` を `distinctUntilChanged()` して collect し、変化したときだけ同じ ID で `notify()`。0件になったら `stopForeground(STOP_FOREGROUND_REMOVE)` と `stopSelf()`。設定がオフになったら `STOP_FOREGROUND_DETACH` で抜けて通常の通知に切り替える
+  - `notification/TaskNotificationController`：窓口。Receiver・画面・Repository（`TaskChangeListener`）はここだけを呼ぶ。サービスが動いていれば `refreshTicks` を進めて作り直しを頼み、止まっていれば開始する（設定オフなら `NotificationUpdater`）。`ForegroundServiceStartNotAllowedException` を捕捉し、開始できなければ通常の通知で代用する
+  - `notification/TaskNotificationBuilder`：通知の組み立てだけ（固定表示・通常で共通）。固定表示は `setColorized(true)`＋`setColor(R.color.notification_pinned)`＋`FOREGROUND_SERVICE_IMMEDIATE`
+  - `notification/NotificationUpdater`：通常の常駐通知（設定オフのときと、サービスを開始できなかったとき）
+  - `notification/RefreshAlarm`：「次の期限＋1秒」と「次の0時」の早い方に RTC の `set()` を1本だけ予約（正確なアラームの権限は使わない）
+  - `settings/AppSettings`（SharedPreferences）、`ui/settings/SettingsScreen`（一覧画面の右上の歯車から開く。画面の切り替えは `MainActivity` の状態で行う）
+- Manifest：`FOREGROUND_SERVICE` / `FOREGROUND_SERVICE_SPECIAL_USE`、サービスは `exported="false"`・同じプロセス・`foregroundServiceType="specialUse"`・`PROPERTY_SPECIAL_USE_FGS_SUBTYPE` に用途を記載。`NotificationRestoreReceiver` に `TIME_SET` / `TIMEZONE_CHANGED` を追加（未決事項だった時刻変更時の作り直しはこれで解消）
+- `startForeground()` の種類は Android 14 以降だけ `FOREGROUND_SERVICE_TYPE_SPECIAL_USE` を渡し、それより前は 0
+- 最初の通知は `onStartCommand` 内で `runBlocking(Dispatchers.IO)` で作る（`startForegroundService()` の数秒以内に `startForeground()` が必要なため。読むのは3件と件数だけ）
+- 色付きの背景はライト／ダークで変わらないので、固定表示のときは文字色（白・薄い青・期限切れは薄い赤 `#FFB4AB`）とチェックボックスの色を直接指定している
+- バックグラウンドからの開始（公式ドキュメントで確認、2026-11-06）
+  - Android 15 で `BOOT_COMPLETED` から開始できない種類は `dataSync` / `camera` / `mediaPlayback` / `phoneCall` / `mediaProjection` / `microphone`。**`specialUse` は対象外**（https://developer.android.com/about/versions/15/behavior-changes-15#fgs-boot-completed ）
+  - `BOOT_COMPLETED` / `MY_PACKAGE_REPLACED` / `TIME_SET` / `TIMEZONE_CHANGED` の受信時と通知の操作は、バックグラウンドから開始してよい例外。**正確でないアラームは例外に入らない**（https://developer.android.com/develop/background-work/services/fgs/restrictions-bg-start ）。アラームはサービスが動いている前提で作り直しを頼むだけにし、止まっていて開始できなければ通常の通知で代用する
+  - タスクを0件→1件にできるのはアプリ画面（前面）だけなので、再開は制限に当たらない
+- `Application.onCreate` は `AppContainer` の作成（中身はすべて `by lazy`）とチャンネル作成だけで、重い初期化はない（遅延初期化の提案なし）
+- 確認済み（エミュレータ API 36）
+  - 固定表示の通知は、後から来た他アプリの通知より上の別の枠に表示される（ライト／ダークとも文字が読める）
+  - アプリ画面での追加、通知のチェックでの完了がすぐ反映される（繰り上がる）
+  - スワイプで消す → すぐ出し直される（2回確認）
+  - アプリ更新（`MY_PACKAGE_REPLACED`）・端末再起動（`BOOT_COMPLETED`、起動完了から約25秒）でサービスが例外なく再開する
+  - 時刻を進める（`cmd alarm set-time`）→ `TIME_SET` で作り直され、期限切れが赤字になり、アラームが次の0時に予約し直される
+  - 0件 → サービス停止・通知とアラームが消える。追加 → 再開
+  - 設定オフ → サービスが止まり通常の通知に切り替わる。オン → 固定表示に戻る
+- 未確認：0時のアラームが実際に届くところ（`set()` は最大1時間ほど遅れることがある）、Android 12〜15 での動作（エミュレータは API 36 のみ）
+
+### 実機での確認手順
+1. アプリを入れて開き、通知を許可する。タスクを3件以上追加し、通知欄の一番上に色付きの通知が出ることを確認する
+2. **即時更新**：アプリでタスクを追加・編集・削除し、通知がすぐ変わることを確認する。通知のチェックボックスで完了し、次のタスクが繰り上がることを確認する
+3. **他アプリの通知より上**：別のアプリから通知を受ける（自分にメッセージを送るなど）。SRTodo の通知が一番上のままであることを確認する。会話（メッセージ）の通知や着信の通知と並んだときの順番も見ておく
+4. **スワイプで復帰**：通知を横にスワイプして消す。すぐに出し直されることを確認する（Android 13 以降は消せる）
+5. **再起動で復帰**：端末を再起動し、ロック解除後しばらく（〜1分程度）で通知が戻ることを確認する
+6. **日付をまたぐ**：期限を「今日の数分後」にしたタスクを作り、期限を過ぎたら赤字になることを確認する。日付の切り替わりは、設定で自動の日付をオフにして日付を進め、作り直されることを確認する（作業後は自動に戻す）。0時ちょうどのアラームは最大1時間ほど遅れることがある
+7. **設定**：設定画面で「通知に固定表示する」をオフにして、通常の通知（色なし）になることを確認する。オンに戻すと固定表示に戻ることを確認する
+8. **0件**：すべて完了して通知が消えることを確認する。設定アプリの「実行中のアプリ」（または通知欄下部のアクティブなアプリ）から SRTodo が消えることも確認する
+9. **Android 14 / 15**：上の 1〜8 を Android 14 と 15 の端末でそれぞれ行う。特に Android 15 では再起動（手順5）で `ForegroundServiceStartNotAllowedException` が出ないこと（`adb logcat -s TaskNotification TaskNotificationService` に警告が出ないこと）を確認する
+10. **電池・負担**：一晩置いて、設定 > 電池 で SRTodo の使用量がほぼ0であることを確認する
 
 ## ビルド環境（Phase 0 で確定）
 - JDK 21（Temurin）。インストールされているのは21だけなので、ツールチェーンは指定せず、`jvmTarget` と `compileOptions` で 17 を指定している
@@ -118,4 +162,4 @@
 - ビルド時の「Unable to strip libandroidx.graphics.path.so」は NDK が未導入なだけで、無視してよい
 
 ## 次にやること
-Phase 6 の残り：実機での確認（再起動、スワイプで消す、ダークモード、0件→1件の再表示、期限切れの赤字表示）と、エミュレータで未確認だった項目（Android 12 / API 31 での見た目と挙動、画面回転、タスク0件の案内表示）。Phase 5（デザインの反映）はデザインが用意できたら着手する
+Phase 6 の残り：実機での確認（「固定表示の実装メモ」の実機での確認手順。Android 14 / 15 を含む）と、エミュレータで未確認だった項目（Android 12 / API 31 での見た目と挙動、画面回転、タスク0件の案内表示）。Phase 5（デザインの反映）はデザインが用意できたら着手する

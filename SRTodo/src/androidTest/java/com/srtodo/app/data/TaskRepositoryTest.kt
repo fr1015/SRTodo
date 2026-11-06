@@ -15,7 +15,7 @@ import org.junit.runner.RunWith
 
 /**
  * Repository の書き込みと「書き込みのたびに通知を作り直す」ことを確かめる。
- * 本物の NotificationUpdater の代わりに呼ばれた回数を数える偽物を渡すので、エミュレータに通知は出ない。
+ * 本物の TaskNotificationController の代わりに呼ばれた回数を数える偽物を渡すので、エミュレータに通知は出ない。
  */
 @RunWith(AndroidJUnit4::class)
 class TaskRepositoryTest {
@@ -130,7 +130,7 @@ class TaskRepositoryTest {
 
     @Test
     fun 最後の1件を完了しても通知の作り直しは呼ばれる() = runTest {
-        // 0件になったときに通知を消すのは NotificationUpdater の役目なので、Repository は必ず知らせる
+        // 0件になったときに通知を消すのは TaskNotificationController の役目なので、Repository は必ず知らせる
         val id = repository.add("最後の1件", dueAt = null)
         changedCount = 0
 

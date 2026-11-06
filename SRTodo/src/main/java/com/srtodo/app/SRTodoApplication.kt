@@ -9,6 +9,6 @@ class SRTodoApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         container = AppContainer(this)
-        container.notificationUpdater.createChannel()
+        container.notificationBuilder.createChannel()
     }
 }
