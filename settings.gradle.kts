@@ -20,4 +20,4 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "SRTodo"
-include(":app")
+include(":SRTodo")
