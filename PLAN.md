@@ -1,6 +1,6 @@
 # 開発計画・引き継ぎメモ
 
-最終更新: 2026-10-31
+最終更新: 2026-11-06
 進捗: Phase 4 完了。Phase 6 のうち DAO / Repository のテストを追加済み（Phase 5 は保留）
 デザイン: 当面は Material3 標準の仮デザインのままでよい（2026-10-31 に決定）。Phase 5 は保留
 
@@ -12,6 +12,7 @@
 | 期限切れタスク | 通知内で赤字で表示する（アプリ画面も同じ扱いにする） |
 | 期限の粒度 | 日付と時刻（日時ピッカーで設定。`dueAt: Long?` に epoch millis で保存） |
 | 期限切れへの切り替わり | 期限を過ぎたら、操作がなくても通知を赤字に作り直す（`AlarmManager` の RTC アラーム。数分の遅れは許容）。アプリ画面は毎分0秒に表示を更新する |
+| 通知欄での位置（2026-11-06） | 通常の通知（`setOngoing(true)`）のまま運用し、フォアグラウンドサービスや通知へのアクセス権限は使わない。他アプリの通知に押し下げられる問題には、データ変更時・期限・日付の切り替わり（0時）に作り直して `when` を新しくし、上に戻すことで対応する。チャンネルは `IMPORTANCE_HIGH`、`setOnlyAlertOnce(true)` と `setSilent(true)` で音・ポップアップは出さない |
 
 ## 方針
 - 一番難しいのは通知まわり（RemoteViews のチェックボックスと常駐性）。そのため通知を先に試作して動作を確かめ、アプリ画面は後で作る
@@ -36,7 +37,7 @@
 
 ## データ層の実装メモ（Phase 2）
 - 構成（`com.srtodo.app`）
-  - `data/Task`（エンティティ、テーブル名 `tasks`、`(isDone, dueAt)` にインデックス）、`data/TaskDao`、`data/AppDatabase`（DB名 `srtodo.db`、version 1、スキーマは `app/schemas` に出力してコミットする）
+  - `data/Task`（エンティティ、テーブル名 `tasks`、`(isDone, dueAt)` にインデックス）、`data/TaskDao`、`data/AppDatabase`（DB名 `srtodo.db`、version 1、スキーマは `SRTodo/schemas` に出力してコミットする）
   - `data/TaskRepository`：書き込みの窓口。`add` / `edit` / `complete` / `uncomplete` / `delete` のたびに `NotificationUpdater.update()` を呼ぶ
   - `notification/NotificationUpdater`：DB を読んで通知を作り直す（読むだけ）。`Mutex` で更新を1つずつ順番に行う
   - `AppContainer`（手書き DI）を `SRTodoApplication` が持つ。`context.appContainer` で取り出す。通知チャンネルは `Application.onCreate` で作る
@@ -67,7 +68,7 @@
 - アイコンは Material Icons ライブラリを入れず、`res/drawable` のベクター（`ic_add` / `ic_delete` / `ic_expand`）を使っている
 - LazyColumn のキーは未完了 `p-ID`、完了済み `c-ID`。2つの Flow が別々に更新されるため、移動の瞬間にキーが重なってクラッシュしないようにしている
 - 編集中のタスクは ID で `rememberSaveable` に持つ（画面回転でダイアログが閉じない）。新規は ID=0
-- 期限切れの自動更新：`NotificationUpdater.update()` のたびに、未完了で一番近い未来の期限＋1秒に `AlarmManager.set(RTC)` を登録（無ければ解除）→ `OverdueRefreshReceiver` が通知を作り直す。RTC は端末を起こさないので、スリープ中なら次に画面が点いたときに届く。権限は不要。アラームは再起動・強制停止で消えるが、`BOOT_COMPLETED` とアプリ起動時に `update()` するので登録し直される
+- 期限切れの自動更新：`NotificationUpdater.update()` のたびに、「未完了で一番近い未来の期限＋1秒」と「次の0時」の早い方に `AlarmManager.set(RTC)` を登録（タスク0件なら解除。0時は 2026-11-06 に追加。通知を新しくして通知欄の上に戻すため）→ `OverdueRefreshReceiver` が通知を作り直す。RTC は端末を起こさないので、スリープ中なら次に画面が点いたときに届く。権限は不要。アラームは再起動・強制停止で消えるが、`BOOT_COMPLETED` とアプリ起動時に `update()` するので登録し直される
 - MainActivity は起動時（初回のみ）に `update()` する。強制停止後に開いたときに通知とアラームを戻すため
 - 確認済み（エミュレータ API 36）：完了済みの表示と開閉／チェックを外して未完了に戻す（0件→1件で通知が出る）／完了済みの削除／追加（タイトル自動フォーカス、日付→時刻、期限順の位置に入る）／編集（期限を外すと赤字が消え最後尾へ）／編集ダイアログから削除／一覧で完了して0件になると通知が消える／13:15 期限のタスクで 13:15:02 にアラームが届き通知が赤字になる／期限がなくなるとアラームが解除される／ダークモード
 - 未確認：タスクが1件もないときの案内文の表示（全件削除の操作はしていない）、画面回転
@@ -77,8 +78,8 @@
 - 実行方法
   - JVM の単体テスト：`./gradlew testDebugUnitTest`
   - エミュレータ（実機）上のテスト：`./gradlew connectedDebugAndroidTest`（端末かエミュレータを接続しておく）。**終了時にアプリがアンインストールされる**ので、続けて手で確認するときは入れ直して通知の権限を許可し直す
-- `app/src/test`：`TaskTest`（期限切れの判定。期限ちょうどはまだ期限切れでない、期限なし・完了済みは期限切れにならない）
-- `app/src/androidTest`：Room のインメモリ DB（実際の SQLite）で SQL を確かめる
+- `SRTodo/src/test`：`TaskTest`（期限切れの判定。期限ちょうどはまだ期限切れでない、期限なし・完了済みは期限切れにならない）
+- `SRTodo/src/androidTest`：Room のインメモリ DB（実際の SQLite）で SQL を確かめる
   - `TaskDaoTest`：期限の近い順・期限なしは最後・同じ期限は作成順→ID順／上位3件／完了済みは除外／完了で4件目が繰り上がる／真ん中を完了しても崩れない／二重に完了しても完了日時を上書きしない／未完了に戻すと元の位置へ／完了済みは完了が新しい順／削除で繰り上がる／次の期限（過去・完了済み・期限なしを除く）
   - `TaskRepositoryTest`：追加・完了・未完了に戻す・編集・削除の結果と、書き込みのたびに通知の作り直しが1回呼ばれること
 - Repository から通知を作り直す部分は `data/TaskChangeListener` に切り出した（本番は `NotificationUpdater` が実装）。テストでは呼ばれた回数を数える偽物を渡すので、テスト中に通知は出ない
@@ -96,17 +97,23 @@
 - 期限切れの赤字：`setColorStateList(id, "setTextColor", R.color.task_overdue)`（API 31以降）で通知側のコンテキストで色を解決させ、`values` / `values-night` でライト／ダークを切り替えている
 - 文字色は `TextAppearance.Compat.Notification.Title` / `.Info` を使い、ダークモードでも自動で切り替わる
 - 「残り N 件」は `setSubText` でヘッダーに出す（展開時のみ見える）
-- 通知チャンネルは `IMPORTANCE_DEFAULT`（音・バイブなし）。LOW だと「サイレント」欄に入るため
+- 通知チャンネルは ~~`IMPORTANCE_DEFAULT`~~ → 2026-11-06 に `IMPORTANCE_HIGH`（ID `tasks_top`）に変更（音・バイブなし）。LOW だと「サイレント」欄に入るため DEFAULT 以上にする。既存チャンネルの重要度はアプリから上げられないので ID を変え、旧チャンネル `tasks` は `createChannel()` で削除している
+- 通知欄の並び順（2026-11-06 に API 36 で調査）
+  - 重要度を HIGH にしても、後から来た DEFAULT の通知の下に表示された。最近の Android は重要度を「DEFAULT 以上か」でしか比べず、その中では新しい順に並ぶため
+  - 常に最上部に固定できるのは、通話・メディア・会話・色付きフォアグラウンドサービスの通知だけ。今回は採用しない（決定済みの仕様を参照）
+  - 通知を作り直す（`notify()` で更新する、またはスワイプ後に再投稿する）と `when` が新しくなり、一番上に戻ることを確認した。`setWhen(now)` を明示している
+  - HIGH にしても `setSilent(true)` により、0件→1件で新しく出したときもポップアップは出なかった
 - 長いタイトルは1行で末尾が「…」になる
 - 気になった点（デザイナー向け）：ダークモードでは未チェックのチェックボックスの枠が暗く、目立ちにくい
 - 未確認：Android 12（API 31）の実機・エミュレータでの見た目（今回は API 36 で確認）
 
 ## ビルド環境（Phase 0 で確定）
 - JDK 21（Temurin）。インストールされているのは21だけなので、ツールチェーンは指定せず、`jvmTarget` と `compileOptions` で 17 を指定している
-- Gradle 8.14.5 / AGP 8.13.2 / Kotlin 2.4.20 / KSP 2.3.13 / Room 2.8.5（Room Gradle Plugin でスキーマを `app/schemas` に出力）
+- Gradle 8.14.5 / AGP 8.13.2 / Kotlin 2.4.20 / KSP 2.3.13 / Room 2.8.5（Room Gradle Plugin でスキーマを `SRTodo/schemas` に出力）
 - compileSdk / targetSdk 36（SDKに入っているのは android-36 まで）
 - **Compose BOM は 2026.06.00（Compose 1.11 系）に固定**。2026.08.00 以降（Compose 1.12）は AGP 9.1 以上と compileSdk 37 が必要なため使えない。上げるときは AGP 9 系への移行と SDK 37 の導入をあわせて行うこと
 - パッケージ名 / applicationId: `com.srtodo.app`
+- アプリのモジュール（フォルダ）名は `SRTodo`（2026-11-06 に `app` から変更。`settings.gradle.kts` は `include(":SRTodo")`）。Gradle タスクは `:SRTodo:assembleDebug` など
 - バージョンは `gradle/libs.versions.toml` で管理している
 - ビルド時の「Unable to strip libandroidx.graphics.path.so」は NDK が未導入なだけで、無視してよい
 

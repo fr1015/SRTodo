@@ -18,6 +18,8 @@ import com.srtodo.app.data.Task
 import com.srtodo.app.data.TaskChangeListener
 import com.srtodo.app.data.TaskDao
 import com.srtodo.app.util.DueFormatter
+import java.time.Instant
+import java.time.ZoneId
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
@@ -38,18 +40,23 @@ class NotificationUpdater(
     private val mutex = Mutex()
 
     fun createChannel() {
+        val manager = context.getSystemService(NotificationManager::class.java)
+        // 既存チャンネルの重要度はアプリから上げられないため、ID を変えて作り直し、古いものは消す
+        LEGACY_CHANNEL_IDS.forEach { manager.deleteNotificationChannel(it) }
+
         val channel = NotificationChannel(
             CHANNEL_ID,
             context.getString(R.string.notification_channel_name),
-            // DEFAULT にして「サイレント」欄に入らないようにし、音とバイブは切る
-            NotificationManager.IMPORTANCE_DEFAULT,
+            // 通知欄の並び順は重要度が高いほど上になる。HIGH にして他アプリの通知に押し流されないようにする。
+            // 音とバイブは切り、通知側も setSilent にしているので、ポップアップ（ヘッドアップ）は出ない
+            NotificationManager.IMPORTANCE_HIGH,
         ).apply {
             description = context.getString(R.string.notification_channel_description)
             setSound(null, null)
             enableVibration(false)
             setShowBadge(false)
         }
-        context.getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
+        manager.createNotificationChannel(channel)
     }
 
     override suspend fun onTasksChanged() = update()
@@ -60,14 +67,14 @@ class NotificationUpdater(
         ) return@withLock
 
         val now = clock()
-        scheduleOverdueRefresh(dao.getNextDueAfter(now))
-
         val manager = NotificationManagerCompat.from(context)
         val tasks = dao.getPendingTop(MAX_EXPANDED)
         if (tasks.isEmpty()) {
+            scheduleRefresh(null)
             manager.cancel(NOTIFICATION_ID)
             return@withLock
         }
+        scheduleRefresh(nextRefreshAt(dao.getNextDueAfter(now), now))
         val pendingCount = dao.countPending()
 
         val openApp = PendingIntent.getActivity(
@@ -93,8 +100,12 @@ class NotificationUpdater(
             .setContentIntent(openApp)
             .setDeleteIntent(onDismiss)
             .setOngoing(true)
+            // 並び順の補助（チャンネルの重要度が優先されるが、念のため最大にしておく）
+            .setPriority(NotificationCompat.PRIORITY_MAX)
             .setOnlyAlertOnce(true)
             .setSilent(true)
+            // 通知欄は新しい順に並ぶ。作り直すたびに when を更新して上に戻す（表示はしない）
+            .setWhen(now)
             .setShowWhen(false)
             .build()
 
@@ -102,10 +113,23 @@ class NotificationUpdater(
     }
 
     /**
-     * 次の期限の直後に OverdueRefreshReceiver が呼ばれるようにする。期限が無ければ解除する。
+     * 次に通知を作り直す時刻。「次の期限の直後」と「次の0時（日付の切り替わり）」の早い方。
+     * 作り直すと when が新しくなり、通知欄で他アプリの通知に押し下げられていても上に戻る。
+     */
+    private fun nextRefreshAt(nextDueAt: Long?, now: Long): Long {
+        val zone = ZoneId.systemDefault()
+        val nextMidnight = Instant.ofEpochMilli(now).atZone(zone).toLocalDate()
+            .plusDays(1).atStartOfDay(zone).toInstant().toEpochMilli()
+        // isOverdue は dueAt < now で判定するため、期限より少し後にする
+        val afterDue = nextDueAt?.plus(OVERDUE_MARGIN_MILLIS) ?: return nextMidnight
+        return minOf(afterDue, nextMidnight)
+    }
+
+    /**
+     * 指定の時刻に OverdueRefreshReceiver が呼ばれるようにする。null なら解除する。
      * 端末を起こさない RTC アラームなので権限は不要。スリープ中なら次に画面が点いたときに届く。
      */
-    private fun scheduleOverdueRefresh(nextDueAt: Long?) {
+    private fun scheduleRefresh(triggerAt: Long?) {
         val alarmManager = context.getSystemService(AlarmManager::class.java)
         val pendingIntent = PendingIntent.getBroadcast(
             context,
@@ -113,11 +137,10 @@ class NotificationUpdater(
             Intent(context, OverdueRefreshReceiver::class.java),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
-        if (nextDueAt == null) {
+        if (triggerAt == null) {
             alarmManager.cancel(pendingIntent)
         } else {
-            // isOverdue は dueAt < now で判定するため、少し後にする
-            alarmManager.set(AlarmManager.RTC, nextDueAt + OVERDUE_MARGIN_MILLIS, pendingIntent)
+            alarmManager.set(AlarmManager.RTC, triggerAt, pendingIntent)
         }
     }
 
@@ -156,7 +179,10 @@ class NotificationUpdater(
     }
 
     companion object {
-        const val CHANNEL_ID = "tasks"
+        const val CHANNEL_ID = "tasks_top"
+
+        /** 過去に使っていたチャンネル（IMPORTANCE_DEFAULT）。起動時に削除する */
+        private val LEGACY_CHANNEL_IDS = listOf("tasks")
         private const val NOTIFICATION_ID = 1
         private const val MAX_EXPANDED = 3
         private const val MAX_COLLAPSED = 1

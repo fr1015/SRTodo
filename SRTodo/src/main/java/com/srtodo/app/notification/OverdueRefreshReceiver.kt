@@ -7,7 +7,8 @@ import android.util.Log
 import com.srtodo.app.appContainer
 
 /**
- * 次のタスクの期限が来たとき（AlarmManager）に呼ばれ、通知を作り直して期限切れの赤字表示にする。
+ * 次のタスクの期限が来たとき、または日付が切り替わったとき（AlarmManager）に呼ばれ、通知を作り直す。
+ * 期限切れの赤字表示に切り替えるのと、通知を新しくして通知欄の上に戻すのが目的。
  * アラームの登録は NotificationUpdater.update() が毎回行う。
  */
 class OverdueRefreshReceiver : BroadcastReceiver() {
